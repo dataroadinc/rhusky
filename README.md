@@ -130,7 +130,7 @@ fi
 | ------- | ------ | --------- | ------------- | ---------- |
 | Sets `core.hooksPath` | Yes | Yes | No | No |
 | Creates hook files | Optional | Yes | Yes | Yes |
-| Overwrites existing hooks | Never | Yes | Yes | Yes |
+| Overwrites existing hooks | Never | [Yes][sloughi-issue] | Yes | Yes |
 | Zero dependencies | Yes | Yes | No | No |
 | Customizable hooks dir | Yes | Yes | Limited | Limited |
 | CI-aware | Yes | Yes | No | No |
@@ -138,6 +138,7 @@ fi
 [Sloughi]: https://crates.io/crates/sloughi
 [cargo-husky]: https://crates.io/crates/cargo-husky
 [husky-rs]: https://crates.io/crates/husky
+[sloughi-issue]: https://github.com/01walid/sloughi/issues/2
 
 ### Sloughi
 
