@@ -1,5 +1,10 @@
 # Rhusky
 
+[![Crates.io](https://img.shields.io/crates/v/rhusky.svg)](https://crates.io/crates/rhusky)
+[![Documentation](https://docs.rs/rhusky/badge.svg)](https://docs.rs/rhusky)
+[![CI](https://github.com/dataroadinc/rhusky/actions/workflows/ci.yml/badge.svg)](https://github.com/dataroadinc/rhusky/actions/workflows/ci.yml)
+[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC_BY--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+
 Git hooks manager for Rust projects. Like Husky, but for Rust.
 
 Inspired by [Sloughi](https://github.com/01walid/sloughi) and the
