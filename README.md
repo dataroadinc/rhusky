@@ -26,7 +26,9 @@ Create a `build.rs` file at the root of your project:
 ```rust
 fn main() {
     rhusky::Rhusky::new()
-        .hooks_dir(".githooks")
+        .hooks_dir(".githooks")       // Custom hooks directory (default: ".githooks")
+        .skip_in_env("GITHUB_ACTIONS") // Skip when this env var is set (CI always skipped)
+        .with_default_hooks()          // Create default hooks if they don't exist
         .install()
         .ok();
 }
@@ -68,6 +70,27 @@ rhusky::Rhusky::new()
     .ok();
 ```
 
+### Default hooks
+
+Optionally create default hook scripts for Rust projects:
+
+```rust
+rhusky::Rhusky::new()
+    .with_default_hooks()
+    .install()
+    .ok();
+```
+
+This creates three hooks (if they don't already exist):
+
+- **pre-commit**: Runs `cargo +nightly fmt --check` and
+  `cargo +nightly clippy` on staged Rust files
+- **commit-msg**: Validates conventional commit format with
+  mandatory scope (e.g., `feat(api): add endpoint`)
+- **post-commit**: Verifies the commit is signed
+
+Existing hooks are never overwritten.
+
 ## How it works
 
 Rhusky sets Git's `core.hooksPath` configuration to point to your
@@ -76,9 +99,10 @@ instead of the default `.git/hooks/`.
 
 Unlike other tools, Rhusky:
 
-1. **Never creates hook files** - you manage your own hooks
-2. **Never overwrites existing files** - truly idempotent
-3. **Only sets git config** - minimal, predictable behavior
+1. **Never overwrites existing hooks** - truly idempotent
+2. **Optionally creates defaults** - use `with_default_hooks()` or
+   manage your own
+3. **Minimal by default** - just sets git config unless you opt in
 
 ## Recommended hooks
 
@@ -105,8 +129,8 @@ fi
 | Feature | Rhusky | Sloughi | cargo-husky | husky-rs |
 | ------- | ------ | ------- | ----------- | -------- |
 | Sets `core.hooksPath` | Yes | Yes | No | No |
-| Creates hook files | No | Yes | Yes | Yes |
-| Overwrites existing hooks | No | Yes | Yes | Yes |
+| Creates hook files | Optional | Yes | Yes | Yes |
+| Overwrites existing hooks | Never | Yes | Yes | Yes |
 | Zero dependencies | Yes | Yes | No | No |
 | Customizable hooks dir | Yes | Yes | Limited | Limited |
 | CI-aware | Yes | Yes | No | No |
