@@ -66,8 +66,6 @@ pub struct Rhusky {
 /// Checks for nightly toolchain, then runs `cargo +nightly fmt --check`
 /// and `cargo +nightly clippy` on staged Rust files.
 const DEFAULT_PRE_COMMIT_HOOK: &str = r#"#!/bin/sh
-set -e
-
 # Check for nightly toolchain
 if ! rustup run nightly rustc --version > /dev/null 2>&1; then
     echo "Error: Rust nightly toolchain is required but not installed."
@@ -82,16 +80,16 @@ if [ -z "$RUST_FILES" ]; then
 fi
 
 echo "Running cargo +nightly fmt --check..."
-cargo +nightly fmt -- --check || {
+if ! cargo +nightly fmt -- --check; then
     echo "Format check failed. Run: cargo +nightly fmt"
     exit 1
-}
+fi
 
 echo "Running cargo +nightly clippy..."
-cargo +nightly clippy --all-targets -- -D warnings || {
+if ! cargo +nightly clippy --all-targets -- -D warnings; then
     echo "Clippy check failed."
     exit 1
-}
+fi
 "#;
 
 /// Default commit-msg hook script.
@@ -113,9 +111,12 @@ fi
 ///
 /// Verifies that commits are signed with GPG or SSH.
 const DEFAULT_POST_COMMIT_HOOK: &str = r#"#!/bin/sh
-set -e
+COMMIT_HASH=$(git rev-parse HEAD 2>/dev/null)
+if [ -z "$COMMIT_HASH" ]; then
+    echo "Error: Failed to get commit hash."
+    exit 1
+fi
 
-COMMIT_HASH=$(git rev-parse HEAD)
 SIG_STATUS=$(git log -1 --format='%G?' "$COMMIT_HASH" 2>/dev/null || echo "N")
 
 case "$SIG_STATUS" in
