@@ -1,0 +1,11 @@
+target/
+
+# No changelog in git itself, we generate it from the git log
+CHANGELOG.md
+
+# Log files
+*.log
+
+# Environment files
+.env
+.env.local
