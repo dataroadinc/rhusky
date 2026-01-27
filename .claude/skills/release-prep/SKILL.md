@@ -6,7 +6,7 @@ description:
 
 # Release Preparation Skill
 
-Use this skill when preparing a new release of rhusky.
+Use this skill when preparing a new release.
 
 ## Release Workflow Overview
 
@@ -34,30 +34,29 @@ cargo test
 
 ```bash
 # Current version
-grep '^version' Cargo.toml
+cargo version-info current
+
+# Latest published release
+cargo version-info latest
 
 # Check for uncommitted changes
 git status
 
-# Check latest git tag
-git describe --tags --abbrev=0 2>/dev/null || echo "No tags yet"
+# Check if version already changed
+cargo version-info changed
 ```
 
 ## Step 3: Bump Version
 
 Choose the appropriate bump type:
 
-- **patch**: Bug fixes, minor improvements (0.0.1 -> 0.0.2)
-- **minor**: New features, backward compatible (0.1.0 -> 0.2.0)
-- **major**: Breaking changes (1.0.0 -> 2.0.0)
-
-1. Edit `Cargo.toml` and update the `version` field
-2. Run `cargo update --workspace`
-3. Stage and commit:
+- **patch**: Bug fixes, minor improvements (0.0.8 -> 0.0.9)
+- **minor**: New features, backward compatible (0.0.9 -> 0.1.0)
+- **major**: Breaking changes (0.1.0 -> 1.0.0)
 
 ```bash
-git add Cargo.toml Cargo.lock
-git commit -m "chore(version): bump X.Y.Z -> A.B.C"
+cargo version-info bump --patch
+# or --minor / --major
 ```
 
 ## Step 4: Verify the Bump
@@ -65,6 +64,9 @@ git commit -m "chore(version): bump X.Y.Z -> A.B.C"
 ```bash
 # Check the commit
 git log -1
+
+# Verify version in Cargo.toml
+cargo version-info current
 
 # Check what files changed
 git diff HEAD~1 --stat
@@ -99,13 +101,25 @@ the changelog automatically.
 
 ```bash
 # Check latest release on GitHub
-gh release list --limit 1
+cargo version-info latest
 
 # Check crates.io
 cargo search rhusky
 ```
 
 ## Troubleshooting
+
+### Version already bumped
+
+If `cargo version-info changed` returns true but you haven't released:
+
+```bash
+# Check what the current version is
+cargo version-info current
+
+# Check what the latest release is
+cargo version-info latest
+```
 
 ### CI didn't create a release
 
