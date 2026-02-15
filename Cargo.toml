@@ -34,7 +34,7 @@ path = "src/lib.rs"
 
 [dev-dependencies]
 serial_test = "3.2"
-tempfile = "3.24"
+tempfile = "3.25"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.{ archive-format }"
