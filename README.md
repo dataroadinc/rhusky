@@ -24,7 +24,7 @@ Add rhusky to your build-dependencies:
 
 ```toml
 [build-dependencies]
-rhusky = "0.0.4"
+rhusky = "0.0.5"
 ```
 
 Create a `build.rs` file at the root of your project:
