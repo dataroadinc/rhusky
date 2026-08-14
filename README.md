@@ -24,8 +24,20 @@ Add rhusky to your build-dependencies:
 
 ```toml
 [build-dependencies]
-rhusky = "0.0.5"
+rhusky = "0.0.6"
 ```
+
+Opt the repository into build-script installation in
+`.cargo/config.toml`:
+
+```toml
+[env]
+RHUSKY_REPOSITORY_ROOT = { value = ".", relative = true, force = true }
+```
+
+Cargo resolves the value relative to the repository containing the
+`.cargo` directory. A published dependency does not inherit its own
+repository configuration, so it cannot alter a downstream checkout.
 
 Create a `build.rs` file at the root of your project:
 
@@ -109,8 +121,8 @@ Unlike other tools, Rhusky:
 2. **Optionally creates defaults** - use `with_default_hooks()` or
    manage your own
 3. **Minimal by default** - just sets git config unless you opt in
-4. **Dependency-safe** - build-script installation only runs for the primary
-   package, never while Rhusky is compiling as a downstream dependency
+4. **Dependency-safe** - build-script installation requires an explicit
+   repository-root opt-in from the active Cargo configuration
 
 ## Recommended hooks
 
