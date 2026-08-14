@@ -2,8 +2,9 @@
 
 [![Crates.io](https://img.shields.io/crates/v/rhusky.svg)](https://crates.io/crates/rhusky)
 [![Documentation](https://docs.rs/rhusky/badge.svg)](https://docs.rs/rhusky)
-[![CI](https://github.com/dataroadinc/rhusky/actions/workflows/ci.yml/badge.svg)](https://github.com/dataroadinc/rhusky/actions/workflows/ci.yml)
-[![License: CC BY-SA 4.0](https://img.shields.io/badge/License-CC_BY--SA_4.0-lightgrey.svg)](https://creativecommons.org/licenses/by-sa/4.0/)
+[![CI](https://github.com/legra-ai/rhusky/actions/workflows/ci.yml/badge.svg)](https://github.com/legra-ai/rhusky/actions/workflows/ci.yml)
+[![License: MIT OR Apache-2.0](https://img.shields.io/badge/license-MIT%20OR%20Apache--2.0-blue.svg)](LICENSE-MIT)
+[![Downloads](https://img.shields.io/crates/d/rhusky.svg)](https://crates.io/crates/rhusky)
 
 Git hooks manager for Rust projects. Like Husky, but for Rust.
 
@@ -168,4 +169,7 @@ into `.git/hooks/`. Like cargo-husky, it doesn't use the modern
 
 ## License
 
-[![CC BY-SA 4.0](https://licensebuttons.net/l/by-sa/4.0/88x31.png)](https://creativecommons.org/licenses/by-sa/4.0/)
+Copyright © 2026 DataRoad Inc, Delaware, USA, trading as Legra.
+
+Licensed under either the [MIT license](LICENSE-MIT) or the
+[Apache License, Version 2.0](LICENSE-APACHE), at your option.
