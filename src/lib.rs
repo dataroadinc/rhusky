@@ -13,7 +13,15 @@
 //!
 //! ```toml
 //! [build-dependencies]
-//! rhusky = "0.0.5"
+//! rhusky = "0.0.6"
+//! ```
+//!
+//! Opt the repository into build-script installation in
+//! `.cargo/config.toml`:
+//!
+//! ```toml
+//! [env]
+//! RHUSKY_REPOSITORY_ROOT = { value = ".", relative = true, force = true }
 //! ```
 //!
 //! Create a `build.rs` file:
@@ -52,6 +60,10 @@ use std::{
     fs,
     io,
 };
+
+/// Environment variable that explicitly opts a repository into build-script
+/// hook installation.
+pub const REPOSITORY_ROOT_ENV: &str = "RHUSKY_REPOSITORY_ROOT";
 
 /// Builder for configuring and installing git hooks.
 #[derive(Debug, Clone)]
@@ -255,20 +267,20 @@ impl Rhusky {
 
     /// Install Git hooks when invoked from an owning package's build script.
     ///
-    /// Cargo sets `CARGO_PRIMARY_PACKAGE` only for packages selected as primary
-    /// build targets. Rhusky therefore skips installation when this crate is
-    /// compiled as a downstream dependency, preventing a dependency build from
-    /// changing the consuming checkout's Git configuration.
+    /// Installation only runs when [`REPOSITORY_ROOT_ENV`] is set. Configure
+    /// that variable in the owning repository's `.cargo/config.toml` with a
+    /// config-relative path. Published dependencies do not load their source
+    /// repository's Cargo configuration, so they cannot alter a downstream
+    /// checkout.
     ///
-    /// For a primary package, installation starts at `CARGO_MANIFEST_DIR` and
-    /// returns any error to the caller. Build scripts should treat that error
-    /// as fatal so a broken repository hook configuration cannot pass
-    /// silently.
+    /// An opted-in repository returns any installation error to the caller.
+    /// Build scripts should treat that error as fatal so a broken repository
+    /// hook configuration cannot pass silently.
     ///
     /// # Errors
     ///
-    /// Returns an error when a primary package has no `CARGO_MANIFEST_DIR`, is
-    /// outside a Git repository, or its hook configuration cannot be installed.
+    /// Returns an error when the opted-in root is empty, is outside a Git
+    /// repository, or its hook configuration cannot be installed.
     ///
     /// # Example
     ///
@@ -280,18 +292,31 @@ impl Rhusky {
     /// }
     /// ```
     pub fn install_from_build_script(&self) -> io::Result<()> {
-        if self.should_skip_for_environment() || env::var_os("CARGO_PRIMARY_PACKAGE").is_none() {
+        if self.should_skip_for_environment() {
             return Ok(());
         }
 
-        let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| {
-            io::Error::new(
+        let Some(repository_root) = env::var_os(REPOSITORY_ROOT_ENV) else {
+            return Ok(());
+        };
+        if repository_root.is_empty() {
+            return Err(io::Error::new(
                 io::ErrorKind::InvalidInput,
-                "CARGO_MANIFEST_DIR is unset for the primary package",
-            )
-        })?;
+                format!("{REPOSITORY_ROOT_ENV} is empty"),
+            ));
+        }
 
-        self.install_from(Path::new(&manifest_dir))
+        self.install_from(Path::new(&repository_root))
+            .map_err(|error| {
+                io::Error::new(
+                    error.kind(),
+                    format!(
+                        "failed to install hooks for {}={}: {error}",
+                        REPOSITORY_ROOT_ENV,
+                        Path::new(&repository_root).display()
+                    ),
+                )
+            })
     }
 
     fn should_skip_for_environment(&self) -> bool {
@@ -744,26 +769,21 @@ mod integration_tests {
 
     #[test]
     #[serial]
-    fn test_build_script_install_skips_non_primary_dependency() {
+    fn test_build_script_install_skips_without_repository_opt_in() {
         let temp_repo = create_temp_git_repo();
         let original_dir = env::current_dir().unwrap();
         let ci_value = clear_ci_env();
-        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
-        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+        let repository_root_value = env::var("RHUSKY_REPOSITORY_ROOT").ok();
 
         env::set_current_dir(temp_repo.path()).unwrap();
         // SAFETY: This serial test restores the process environment below.
-        unsafe {
-            env::remove_var("CARGO_PRIMARY_PACKAGE");
-            env::set_var("CARGO_MANIFEST_DIR", temp_repo.path());
-        }
+        unsafe { env::remove_var("RHUSKY_REPOSITORY_ROOT") };
 
         let result = Rhusky::new().install_from_build_script();
 
         // SAFETY: This serial test restores the process environment.
         unsafe {
-            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
-            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+            restore_env_var("RHUSKY_REPOSITORY_ROOT", repository_root_value);
         }
         restore_ci_env(ci_value);
         env::set_current_dir(original_dir).unwrap();
@@ -775,27 +795,22 @@ mod integration_tests {
 
     #[test]
     #[serial]
-    fn test_build_script_install_uses_primary_manifest_checkout() {
+    fn test_build_script_install_uses_opted_in_repository_root() {
         let temp_repo = create_temp_git_repo();
         let unrelated_dir = TempDir::new().expect("Failed to create temp directory");
         let original_dir = env::current_dir().unwrap();
         let ci_value = clear_ci_env();
-        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
-        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+        let repository_root_value = env::var("RHUSKY_REPOSITORY_ROOT").ok();
 
         env::set_current_dir(unrelated_dir.path()).unwrap();
         // SAFETY: This serial test restores the process environment below.
-        unsafe {
-            env::set_var("CARGO_PRIMARY_PACKAGE", "1");
-            env::set_var("CARGO_MANIFEST_DIR", temp_repo.path());
-        }
+        unsafe { env::set_var("RHUSKY_REPOSITORY_ROOT", temp_repo.path()) };
 
         let result = Rhusky::new().install_from_build_script();
 
         // SAFETY: This serial test restores the process environment.
         unsafe {
-            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
-            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+            restore_env_var("RHUSKY_REPOSITORY_ROOT", repository_root_value);
         }
         restore_ci_env(ci_value);
         env::set_current_dir(original_dir).unwrap();
@@ -810,31 +825,26 @@ mod integration_tests {
 
     #[test]
     #[serial]
-    fn test_build_script_install_fails_for_primary_package_outside_git() {
-        let manifest_dir = TempDir::new().expect("Failed to create temp directory");
+    fn test_build_script_install_fails_for_opted_in_root_outside_git() {
+        let repository_root = TempDir::new().expect("Failed to create temp directory");
         let original_dir = env::current_dir().unwrap();
         let ci_value = clear_ci_env();
-        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
-        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+        let repository_root_value = env::var("RHUSKY_REPOSITORY_ROOT").ok();
 
-        env::set_current_dir(manifest_dir.path()).unwrap();
+        env::set_current_dir(repository_root.path()).unwrap();
         // SAFETY: This serial test restores the process environment below.
-        unsafe {
-            env::set_var("CARGO_PRIMARY_PACKAGE", "1");
-            env::set_var("CARGO_MANIFEST_DIR", manifest_dir.path());
-        }
+        unsafe { env::set_var("RHUSKY_REPOSITORY_ROOT", repository_root.path()) };
 
         let result = Rhusky::new().install_from_build_script();
 
         // SAFETY: This serial test restores the process environment.
         unsafe {
-            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
-            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+            restore_env_var("RHUSKY_REPOSITORY_ROOT", repository_root_value);
         }
         restore_ci_env(ci_value);
         env::set_current_dir(original_dir).unwrap();
 
-        let error = result.expect_err("primary checkout installation must fail");
+        let error = result.expect_err("opted-in checkout installation must fail");
         assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 
