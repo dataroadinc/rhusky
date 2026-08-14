@@ -13,7 +13,7 @@
 //!
 //! ```toml
 //! [build-dependencies]
-//! rhusky = "0.0.4"
+//! rhusky = "0.0.5"
 //! ```
 //!
 //! Create a `build.rs` file:
