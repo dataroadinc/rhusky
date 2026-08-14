@@ -1,0 +1,22 @@
+name: Auto Version Bump & Publish
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "Cargo.toml"
+      - "Cargo.lock"
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write
+
+jobs:
+  bump:
+    uses: legra-ai/github-actions/.github/workflows/cargo-auto-version-bump.yml@main
+    with:
+      crate-name: rhusky
+      match-mode: first-line-prefix
+    secrets:
+      CRATES_IO_TOKEN: ${{ secrets.CRATES_IO_TOKEN }}
