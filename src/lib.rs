@@ -13,7 +13,7 @@
 //!
 //! ```toml
 //! [build-dependencies]
-//! rhusky = "0.1"
+//! rhusky = "0.0.4"
 //! ```
 //!
 //! Create a `build.rs` file:
@@ -22,8 +22,8 @@
 //! fn main() {
 //!     rhusky::Rhusky::new()
 //!         .hooks_dir(".githooks")
-//!         .install()
-//!         .ok();
+//!         .install_from_build_script()
+//!         .expect("failed to install repository Git hooks");
 //! }
 //! ```
 //!
@@ -164,7 +164,7 @@ impl Rhusky {
     /// ```rust
     /// use rhusky::Rhusky;
     ///
-    /// Rhusky::new().hooks_dir(".git-hooks").install().ok();
+    /// let _rhusky = Rhusky::new().hooks_dir(".git-hooks");
     /// ```
     #[must_use]
     pub fn hooks_dir(mut self, path: &str) -> Self {
@@ -182,11 +182,9 @@ impl Rhusky {
     /// ```rust
     /// use rhusky::Rhusky;
     ///
-    /// Rhusky::new()
+    /// let _rhusky = Rhusky::new()
     ///     .skip_in_env("GITHUB_ACTIONS")
-    ///     .skip_in_env("GITLAB_CI")
-    ///     .install()
-    ///     .ok();
+    ///     .skip_in_env("GITLAB_CI");
     /// ```
     #[must_use]
     pub fn skip_in_env(mut self, var: &str) -> Self {
@@ -212,7 +210,7 @@ impl Rhusky {
     /// ```rust
     /// use rhusky::Rhusky;
     ///
-    /// Rhusky::new().with_default_hooks().install().ok();
+    /// let _rhusky = Rhusky::new().with_default_hooks();
     /// ```
     #[must_use]
     pub fn with_default_hooks(mut self) -> Self {
@@ -241,21 +239,69 @@ impl Rhusky {
     ///
     /// ```rust,ignore
     /// fn main() {
-    ///     if let Err(e) = rhusky::Rhusky::new().install() {
-    ///         eprintln!("Warning: Failed to install git hooks: {}", e);
-    ///     }
+    ///     rhusky::Rhusky::new()
+    ///         .install()
+    ///         .expect("failed to install Git hooks");
     /// }
     /// ```
     pub fn install(&self) -> io::Result<()> {
-        // Check if we should skip installation
-        for var in &self.skip_env_vars {
-            if env::var(var).is_ok() {
-                return Ok(());
-            }
+        if self.should_skip_for_environment() {
+            return Ok(());
         }
 
-        // Get repository root
-        let repo_root = get_repo_root()?;
+        let current_dir = env::current_dir()?;
+        self.install_from(&current_dir)
+    }
+
+    /// Install Git hooks when invoked from an owning package's build script.
+    ///
+    /// Cargo sets `CARGO_PRIMARY_PACKAGE` only for packages selected as primary
+    /// build targets. Rhusky therefore skips installation when this crate is
+    /// compiled as a downstream dependency, preventing a dependency build from
+    /// changing the consuming checkout's Git configuration.
+    ///
+    /// For a primary package, installation starts at `CARGO_MANIFEST_DIR` and
+    /// returns any error to the caller. Build scripts should treat that error
+    /// as fatal so a broken repository hook configuration cannot pass
+    /// silently.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error when a primary package has no `CARGO_MANIFEST_DIR`, is
+    /// outside a Git repository, or its hook configuration cannot be installed.
+    ///
+    /// # Example
+    ///
+    /// ```rust,ignore
+    /// fn main() {
+    ///     rhusky::Rhusky::new()
+    ///         .install_from_build_script()
+    ///         .expect("failed to install repository Git hooks");
+    /// }
+    /// ```
+    pub fn install_from_build_script(&self) -> io::Result<()> {
+        if self.should_skip_for_environment() || env::var_os("CARGO_PRIMARY_PACKAGE").is_none() {
+            return Ok(());
+        }
+
+        let manifest_dir = env::var_os("CARGO_MANIFEST_DIR").ok_or_else(|| {
+            io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "CARGO_MANIFEST_DIR is unset for the primary package",
+            )
+        })?;
+
+        self.install_from(Path::new(&manifest_dir))
+    }
+
+    fn should_skip_for_environment(&self) -> bool {
+        self.skip_env_vars
+            .iter()
+            .any(|var| env::var_os(var).is_some())
+    }
+
+    fn install_from(&self, start_dir: &Path) -> io::Result<()> {
+        let repo_root = get_repo_root(start_dir)?;
 
         // Create hooks directory if it doesn't exist
         let hooks_path = repo_root.join(&self.hooks_dir);
@@ -270,16 +316,14 @@ impl Rhusky {
             create_hook_if_missing(&hooks_path, "post-commit", DEFAULT_POST_COMMIT_HOOK)?;
         }
 
-        // Set core.hooksPath
-        set_hooks_path(&repo_root, &self.hooks_dir)?;
-
-        Ok(())
+        set_hooks_path(&repo_root, &self.hooks_dir)
     }
 }
 
 /// Get the root directory of the git repository.
-fn get_repo_root() -> io::Result<PathBuf> {
+fn get_repo_root(start_dir: &Path) -> io::Result<PathBuf> {
     let output = Command::new("git")
+        .current_dir(start_dir)
         .args(["rev-parse", "--show-toplevel"])
         .output()?;
 
@@ -472,6 +516,20 @@ mod integration_tests {
         unsafe {
             if let Some(val) = ci_value {
                 env::set_var("CI", val);
+            }
+        }
+    }
+
+    /// Restore an environment variable captured before a serial test.
+    unsafe fn restore_env_var(name: &str, value: Option<String>) {
+        match value {
+            Some(original) => {
+                // SAFETY: The caller serializes environment mutation.
+                unsafe { env::set_var(name, original) };
+            }
+            None => {
+                // SAFETY: The caller serializes environment mutation.
+                unsafe { env::remove_var(name) };
             }
         }
     }
@@ -682,6 +740,102 @@ mod integration_tests {
 
         assert!(result.is_ok());
         assert!(hooks_dir.exists());
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_script_install_skips_non_primary_dependency() {
+        let temp_repo = create_temp_git_repo();
+        let original_dir = env::current_dir().unwrap();
+        let ci_value = clear_ci_env();
+        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
+        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+
+        env::set_current_dir(temp_repo.path()).unwrap();
+        // SAFETY: This serial test restores the process environment below.
+        unsafe {
+            env::remove_var("CARGO_PRIMARY_PACKAGE");
+            env::set_var("CARGO_MANIFEST_DIR", temp_repo.path());
+        }
+
+        let result = Rhusky::new().install_from_build_script();
+
+        // SAFETY: This serial test restores the process environment.
+        unsafe {
+            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
+            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+        }
+        restore_ci_env(ci_value);
+        env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert!(!temp_repo.path().join(".githooks").exists());
+        assert_eq!(get_hooks_path(temp_repo.path()), None);
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_script_install_uses_primary_manifest_checkout() {
+        let temp_repo = create_temp_git_repo();
+        let unrelated_dir = TempDir::new().expect("Failed to create temp directory");
+        let original_dir = env::current_dir().unwrap();
+        let ci_value = clear_ci_env();
+        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
+        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+
+        env::set_current_dir(unrelated_dir.path()).unwrap();
+        // SAFETY: This serial test restores the process environment below.
+        unsafe {
+            env::set_var("CARGO_PRIMARY_PACKAGE", "1");
+            env::set_var("CARGO_MANIFEST_DIR", temp_repo.path());
+        }
+
+        let result = Rhusky::new().install_from_build_script();
+
+        // SAFETY: This serial test restores the process environment.
+        unsafe {
+            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
+            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+        }
+        restore_ci_env(ci_value);
+        env::set_current_dir(original_dir).unwrap();
+
+        assert!(result.is_ok());
+        assert!(temp_repo.path().join(".githooks").exists());
+        assert_eq!(
+            get_hooks_path(temp_repo.path()),
+            Some(".githooks".to_string())
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn test_build_script_install_fails_for_primary_package_outside_git() {
+        let manifest_dir = TempDir::new().expect("Failed to create temp directory");
+        let original_dir = env::current_dir().unwrap();
+        let ci_value = clear_ci_env();
+        let primary_value = env::var("CARGO_PRIMARY_PACKAGE").ok();
+        let manifest_value = env::var("CARGO_MANIFEST_DIR").ok();
+
+        env::set_current_dir(manifest_dir.path()).unwrap();
+        // SAFETY: This serial test restores the process environment below.
+        unsafe {
+            env::set_var("CARGO_PRIMARY_PACKAGE", "1");
+            env::set_var("CARGO_MANIFEST_DIR", manifest_dir.path());
+        }
+
+        let result = Rhusky::new().install_from_build_script();
+
+        // SAFETY: This serial test restores the process environment.
+        unsafe {
+            restore_env_var("CARGO_PRIMARY_PACKAGE", primary_value);
+            restore_env_var("CARGO_MANIFEST_DIR", manifest_value);
+        }
+        restore_ci_env(ci_value);
+        env::set_current_dir(original_dir).unwrap();
+
+        let error = result.expect_err("primary checkout installation must fail");
+        assert_eq!(error.kind(), io::ErrorKind::NotFound);
     }
 
     // ==================== Error Handling Tests ====================
