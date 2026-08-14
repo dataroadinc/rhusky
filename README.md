@@ -24,7 +24,7 @@ Add rhusky to your build-dependencies:
 
 ```toml
 [build-dependencies]
-rhusky = "0.0.1"
+rhusky = "0.0.4"
 ```
 
 Create a `build.rs` file at the root of your project:
@@ -35,8 +35,8 @@ fn main() {
         .hooks_dir(".githooks")       // Custom hooks directory (default: ".githooks")
         .skip_in_env("GITHUB_ACTIONS") // Skip when this env var is set (CI always skipped)
         .with_default_hooks()          // Create default hooks if they don't exist
-        .install()
-        .ok();
+        .install_from_build_script()
+        .expect("failed to install repository Git hooks");
 }
 ```
 
@@ -59,8 +59,8 @@ chmod +x .githooks/pre-commit
 ```rust
 rhusky::Rhusky::new()
     .hooks_dir(".git-hooks")  // default is ".githooks"
-    .install()
-    .ok();
+    .install_from_build_script()
+    .expect("failed to install repository Git hooks");
 ```
 
 ### Skip in CI environments
@@ -72,8 +72,8 @@ variable is set. Add more:
 rhusky::Rhusky::new()
     .skip_in_env("GITHUB_ACTIONS")
     .skip_in_env("GITLAB_CI")
-    .install()
-    .ok();
+    .install_from_build_script()
+    .expect("failed to install repository Git hooks");
 ```
 
 ### Default hooks
@@ -83,8 +83,8 @@ Optionally create default hook scripts for Rust projects:
 ```rust
 rhusky::Rhusky::new()
     .with_default_hooks()
-    .install()
-    .ok();
+    .install_from_build_script()
+    .expect("failed to install repository Git hooks");
 ```
 
 This creates three hooks (if they don't already exist):
@@ -109,6 +109,8 @@ Unlike other tools, Rhusky:
 2. **Optionally creates defaults** - use `with_default_hooks()` or
    manage your own
 3. **Minimal by default** - just sets git config unless you opt in
+4. **Dependency-safe** - build-script installation only runs for the primary
+   package, never while Rhusky is compiling as a downstream dependency
 
 ## Recommended hooks
 
