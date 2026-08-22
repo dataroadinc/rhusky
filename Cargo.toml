@@ -31,10 +31,11 @@ name = "rhusky"
 path = "src/lib.rs"
 
 [dependencies]
+async-fs-io = "0.1.5"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [dev-dependencies]
 serial_test = "3.5"
-tempfile = "3.27"
 
 [package.metadata.binstall]
 pkg-url = "{ repo }/releases/download/v{ version }/{ name }-{ target }.{ archive-format }"
