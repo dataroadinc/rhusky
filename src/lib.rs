@@ -65,10 +65,13 @@ use std::{
 pub const REPOSITORY_ROOT_ENV: &str = "RHUSKY_REPOSITORY_ROOT";
 use async_fs_io::{
     ensure_dir,
-    set_permissions,
-    symlink_metadata,
     try_exists,
     write_bytes,
+};
+#[cfg(unix)]
+use async_fs_io::{
+    set_permissions,
+    symlink_metadata,
 };
 
 /// Builder for configuring and installing git hooks.
